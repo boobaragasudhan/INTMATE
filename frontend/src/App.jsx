@@ -4,6 +4,7 @@ import { ParticleBackground } from './components/ParticleBackground';
 import { VintageCard } from './components/VintageCard';
 import { RealTimeTicker } from './components/RealTimeTicker';
 import api from './services/api';
+import { motion, useMotionValue, useTransform, useSpring } from 'framer-motion';
 
 function AuthForm() {
     const [isLogin, setIsLogin] = useState(true);
@@ -13,6 +14,27 @@ function AuthForm() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const navigate = useNavigate();
+
+    // -- 3D Mouse Tracking Setup --
+    const mouseX = useMotionValue(0);
+    const mouseY = useMotionValue(0);
+
+    const smoothMouseX = useSpring(mouseX, { stiffness: 100, damping: 25 });
+    const smoothMouseY = useSpring(mouseY, { stiffness: 100, damping: 25 });
+
+    // Invert the tilt directions so it looks like pushing down with cursor
+    const rotateX = useTransform(smoothMouseY, [-0.5, 0.5], ["12deg", "-12deg"]);
+    const rotateY = useTransform(smoothMouseX, [-0.5, 0.5], ["-12deg", "12deg"]);
+
+    const handleMouseMove = (e) => {
+        // Calculate mouse coordinate delta (-0.5 to 0.5) from dead center of viewport
+        const pctX = (e.clientX / window.innerWidth) - 0.5;
+        const pctY = (e.clientY / window.innerHeight) - 0.5;
+        mouseX.set(pctX);
+        mouseY.set(pctY);
+    };
+
+    const [isTransitioning, setIsTransitioning] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -24,78 +46,120 @@ function AuthForm() {
                 const { data } = await api.post('/auth/login', { email, password });
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('user', JSON.stringify(data));
-                navigate('/dashboard');
+
+                // Trigger the exit animation
+                setIsTransitioning(true);
+                setTimeout(() => navigate('/dashboard'), 800);
             } else {
                 const { data } = await api.post('/auth/register', { fullName, email, password });
                 localStorage.setItem('token', data.token);
                 localStorage.setItem('user', JSON.stringify(data));
-                navigate('/dashboard');
+
+                // Trigger the exit animation
+                setIsTransitioning(true);
+                setTimeout(() => navigate('/dashboard'), 800);
             }
         } catch (err) {
             setError(err.response?.data?.message || 'Authentication Failed.');
-        } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center p-4">
-            <VintageCard className="max-w-md w-full">
-                <h1 className="text-4xl font-bold text-center mb-6 uppercase tracking-[0.2em] border-b-2 border-vintage-paper pb-4">
-                    INTMATE
-                </h1>
-                <p className="text-vintage-gray text-center mb-8 uppercase text-sm tracking-widest font-bold">
-                    [ Automatic Broadcast System ]
-                </p>
+        <div
+            className="min-h-screen flex items-center justify-center p-4 relative"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={() => { mouseX.set(0); mouseY.set(0); }} // Reset tilt smoothly on exit
+            style={{ perspective: "1500px" }}
+        >
+            <motion.div
+                initial={{ opacity: 0, scale: 0.8, filter: 'blur(20px)' }}
+                animate={
+                    isTransitioning
+                        ? { opacity: 0, scale: 0.5, rotateY: 90, rotateX: -45, filter: 'blur(30px)' }
+                        : { opacity: 1, scale: 1, filter: 'blur(0px)' }
+                }
+                transition={
+                    isTransitioning
+                        ? { duration: 0.8, ease: 'easeIn' }
+                        : { duration: 1.5, ease: [0.16, 1, 0.3, 1] }
+                }
+                style={{ rotateX, rotateY, transformStyle: "preserve-3d", pointerEvents: isTransitioning ? 'none' : 'auto' }}
+                className="max-w-md w-full"
+            >
+                <VintageCard className="w-full">
+                    <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.5, duration: 1, ease: 'easeOut' }}
+                    >
+                        <h1 className="text-4xl font-bold text-center mb-6 uppercase tracking-[0.2em] border-b-2 border-vintage-paper pb-4">
+                            INTMATE
+                        </h1>
+                        <p className="text-vintage-gray text-center mb-8 uppercase text-sm tracking-widest font-bold">
+                            [ Automatic Broadcast System ]
+                        </p>
+                    </motion.div>
 
-                {error && <p className="bg-white text-black p-2 mb-4 font-bold text-sm uppercase text-center border-l-4 border-black">ERROR: {error}</p>}
+                    {error && <p className="bg-white text-black p-2 mb-4 font-bold text-sm uppercase text-center border-l-4 border-black">ERROR: {error}</p>}
 
-                <form onSubmit={handleSubmit} className="flex flex-col gap-5 text-sm uppercase font-bold tracking-wider">
-                    {!isLogin && (
+                    <motion.form
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 1, duration: 1 }}
+                        onSubmit={handleSubmit} className="flex flex-col gap-5 text-sm uppercase font-bold tracking-wider"
+                    >
+                        {!isLogin && (
+                            <div className="flex flex-col">
+                                <label className="mb-2 text-vintage-gray">Subject Name</label>
+                                <input
+                                    type="text"
+                                    value={fullName}
+                                    onChange={(e) => setFullName(e.target.value)}
+                                    className="w-full bg-transparent border-b-2 border-vintage-gray focus:border-vintage-paper outline-none px-2 py-2 text-vintage-paper transition-all"
+                                    required
+                                />
+                            </div>
+                        )}
                         <div className="flex flex-col">
-                            <label className="mb-2 text-vintage-gray">Subject Name</label>
+                            <label className="mb-2 text-vintage-gray">Identification (Email)</label>
                             <input
-                                type="text"
-                                value={fullName}
-                                onChange={(e) => setFullName(e.target.value)}
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
                                 className="w-full bg-transparent border-b-2 border-vintage-gray focus:border-vintage-paper outline-none px-2 py-2 text-vintage-paper transition-all"
                                 required
                             />
                         </div>
-                    )}
-                    <div className="flex flex-col">
-                        <label className="mb-2 text-vintage-gray">Identification (Email)</label>
-                        <input
-                            type="email"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full bg-transparent border-b-2 border-vintage-gray focus:border-vintage-paper outline-none px-2 py-2 text-vintage-paper transition-all"
-                            required
-                        />
-                    </div>
-                    <div className="flex flex-col">
-                        <label className="mb-2 text-vintage-gray">Security Clearance (Pass)</label>
-                        <input
-                            type="password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="w-full bg-transparent border-b-2 border-vintage-gray focus:border-vintage-paper outline-none px-2 py-2 text-vintage-paper transition-all"
-                            required
-                        />
-                    </div>
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="w-full bg-vintage-paper text-vintage-ink font-bold uppercase tracking-widest py-4 mt-6 hover:bg-white transition-colors cursor-pointer border-2 border-vintage-paper disabled:opacity-50"
-                    >
-                        {loading ? 'Processing...' : (isLogin ? 'Initiate Link' : 'Register Subject')}
-                    </button>
-                </form>
+                        <div className="flex flex-col">
+                            <label className="mb-2 text-vintage-gray">Security Clearance (Pass)</label>
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                className="w-full bg-transparent border-b-2 border-vintage-gray focus:border-vintage-paper outline-none px-2 py-2 text-vintage-paper transition-all"
+                                required
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-vintage-paper text-vintage-ink font-bold uppercase tracking-widest py-4 mt-6 hover:bg-white transition-colors cursor-pointer border-2 border-vintage-paper disabled:opacity-50"
+                        >
+                            {loading ? 'Processing...' : (isLogin ? 'Initiate Link' : 'Register Subject')}
+                        </button>
+                    </motion.form>
 
-                <p className="text-center text-xs tracking-widest text-vintage-gray mt-8 cursor-pointer hover:text-white transition-colors uppercase border-t border-vintage-gray/30 pt-4" onClick={() => setIsLogin(!isLogin)}>
-                    {isLogin ? "[ Request Clearance ]" : "[ Abort Registration ]"}
-                </p>
-            </VintageCard>
+                    <motion.p
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 1.5, duration: 1 }}
+                        className="text-center text-xs tracking-widest text-vintage-gray mt-8 cursor-pointer hover:text-white transition-colors uppercase border-t border-vintage-gray/30 pt-4" onClick={() => setIsLogin(!isLogin)}
+                    >
+                        {isLogin ? "[ Request Clearance ]" : "[ Abort Registration ]"}
+                    </motion.p>
+                </VintageCard>
+            </motion.div>
         </div>
     );
 }
